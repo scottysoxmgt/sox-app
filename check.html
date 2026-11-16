@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Has this customer paid?</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--fg:#0b1220;--mut:#52607a;--blue:#1d5df0;--line:#d9e1ee;--ok:#0f7a4a;--warn:#b45309}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#121a2b;--fg:#eef3fb;--mut:#9aa9c4;--blue:#5b8cff;--line:#243049;--ok:#4ade80;--warn:#fbbf24}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:18px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:20px 16px}
+main{max-width:460px;margin:8vh auto 0}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:24px}
+small{color:var(--mut)}h1{font-size:22px;margin:6px 0 12px;line-height:1.25}.amt{font-size:34px;font-weight:700;margin:4px 0}
+button{display:block;width:100%;font:inherit;font-weight:600;padding:16px;border-radius:12px;border:2px solid var(--blue);cursor:pointer;margin-top:12px}
+.yes{background:var(--blue);color:#fff}.no{background:transparent;color:var(--blue)}button:disabled{opacity:.5}
+.msg{margin-top:16px;font-weight:600}.ok{color:var(--ok)}.err{color:var(--warn)}
+</style></head><body><main><div class="card" id="c"><small>Loading…</small></div></main>
+<script>
+var API = "https://rqqnwvletctvjsosfhgw.supabase.co/functions/v1/safety-reply";
+var t = new URLSearchParams(location.search).get("t"), c = document.getElementById("c");
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]})}
+function money(n){return "$"+Number(n||0).toLocaleString("en-AU",{maximumFractionDigits:2})}
+function done(text,cls){c.innerHTML='<h1>Thanks, all done.</h1><p class="msg '+cls+'">'+esc(text)+'</p>'}
+function send(a){
+  var bs=c.querySelectorAll("button");bs.forEach(function(b){b.disabled=true});
+  fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({t:t,a:a})})
+   .then(function(r){return r.json()}).then(function(j){
+     if(j.error) return done("Something went wrong. Please try the link again.","err");
+     var s=j.already||j.status;
+     done(s==="paid"?"Marked as paid. We won't chase them.":"Got it. The reminder will go out as planned.","ok");
+   }).catch(function(){done("Couldn't connect. Please try again.","err")});
+}
+if(!t){c.innerHTML='<h1>This link isn\'t right.</h1><small>Open the link from your text message.</small>'}
+else fetch(API+"?t="+encodeURIComponent(t)).then(function(r){return r.json()}).then(function(j){
+  if(j.error) return c.innerHTML='<h1>Link not found.</h1><small>It may be old. Check your latest text.</small>';
+  if(j.status!=="pending") return done(j.status==="paid"?"Already marked as paid.":"Already answered. The reminder is going ahead.","ok");
+  c.innerHTML='<small>'+esc(j.business)+'</small><h1>Has '+esc(j.customer||"this customer")+' paid?</h1>'
+   +'<div class="amt">'+money(j.amount)+'</div><small>Invoice '+esc(j.number||"")+(j.due?' · due '+esc(j.due):'')+'</small>'
+   +'<button class="yes" id="y">Yes, they\'ve paid</button><button class="no" id="n">No, send the reminder</button>';
+  document.getElementById("y").onclick=function(){send("paid")};document.getElementById("n").onclick=function(){send("go_ahead")};
+}).catch(function(){c.innerHTML='<h1>Couldn\'t load.</h1><small>Check your internet and try again.</small>'});
+</script></body></html>
