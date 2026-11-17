@@ -335,6 +335,32 @@ function doSend(id) {
   }).catch(function (e) { if (btn) { btn.disabled = false; btn.textContent = "Send now"; } sheetErr(e.message); })
     .then(function () { S.busy = false; });
 }
+function sendInvAsk(id, approve) {
+  var i = byId(S.invoices, id), cust = i && byId(S.customers, i.customer_id), c = S.client;
+  if (!i) return;
+  var via = cust ? (cust.phone ? "a text to " + cust.phone : cust.email ? "an email to " + cust.email : "") : "";
+  if (!via) return openSheet('<h2>Add their contact first</h2><p>' + (cust ? esc(cust.name) + " has no mobile or email saved." : "This invoice has no customer attached.") + ' Edit it and add one, then try again.</p><div class="btns"><button class="btn ghost" data-act="close-sheet">Close</button></div>');
+  if (cust.opted_out) return openSheet('<h2>Can\'t send this one</h2><p>' + esc(cust.name) + ' asked us not to message them.</p><div class="btns"><button class="btn ghost" data-act="close-sheet">Close</button></div>');
+  var note = c.test_mode ? '<p class="sub">Your account is in test mode, so this goes to you only, not ' + esc(cust.name) + '.</p>' : "";
+  openSheet('<h2>' + (approve ? "Approve and send this invoice to " : "Send this invoice to ") + esc(cust.name) + '?</h2><p>We\'ll send ' + esc(via) + ' with a link to the invoice. They can see how to pay and save a copy.</p>' + note + '<div class="btns"><button class="btn pri" data-act="' + (approve ? "inv-approve-send-do" : "inv-send-do") + '" data-id="' + id + '">' + (approve ? "Approve and send" : "Send now") + '</button><button class="btn ghost" data-act="close-sheet">Not yet</button></div>');
+}
+function doSendInvoice(id, approve) {
+  if (S.busy) return; S.busy = true;
+  var btn = $("#sheet [data-act=" + (approve ? "inv-approve-send-do" : "inv-send-do") + "]"); if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
+  var approved = false;
+  var step = approve ? sb.from("invoices").update({ status: "unpaid", issued: today() }).eq("id", id).then(check).then(function () { approved = true; }) : Promise.resolve();
+  step.then(function () { return sb.functions.invoke("send-to-customer", { body: { kind: "i", id: id } }); }).then(function (r) {
+    if (r.error) {
+      var ctx = r.error.context;
+      return (ctx && ctx.json ? ctx.json().catch(function () { return null; }) : Promise.resolve(null)).then(function (j) { throw new Error((j && j.error) || "That didn't send. Please try again."); });
+    }
+    var m = (r.data && r.data.message) || "Sent.";
+    closeSheet(); return reload().then(function () { toast(m); });
+  }).catch(function (e) {
+    if (approved) { closeSheet(); return reload().then(function () { toast("Approved, but it didn't send. " + e.message); }); }
+    if (btn) { btn.disabled = false; btn.textContent = approve ? "Approve and send" : "Send now"; } sheetErr(e.message);
+  }).then(function () { S.busy = false; });
+}
 function invoiceCopy(i) {
   var cust = byId(S.customers, i.customer_id), c = S.client;
   var txt = "Hi " + firstName(cust ? cust.name : i.customer) + ", thanks for choosing " + c.business_name + ". Here is invoice " + (i.number || "") + " for " + money(i.amount) + " for " + (i.description || "the work") + ". It's due " + fmtDate(i.due) + "." + (c.pay_details ? " To pay: " + c.pay_details.replace(/\s*\n\s*/g, ", ") + "." : "") + " Cheers, " + (c.owner_name || c.business_name);
@@ -452,8 +478,8 @@ function invoicePreview(id) {
     (c.pay_details ? '<div class="ppay"><div class="pl">HOW TO PAY</div><div style="white-space:pre-line">' + esc(c.pay_details) + '</div></div>' : '<div class="ppay warnline noprint">Payment details missing.</div>') +
     (c.default_terms ? '<div class="pm" style="margin-top:12px;white-space:pre-line">' + esc(c.default_terms) + '</div>' : "") + '</div>';
   var btns = draft
-    ? '<button class="btn pri" data-act="inv-approve" data-id="' + id + '">Approve invoice</button><button class="btn" data-act="inv-edit" data-id="' + id + '">Edit</button><button class="btn ghost" data-act="inv-print">Print or save PDF</button><button class="btn ghost" data-act="close-sheet">Close</button>'
-    : '<button class="btn pri" data-act="inv-copy" data-id="' + id + '">Copy message to send</button><button class="btn" data-act="inv-print">Print or save PDF</button><button class="btn ghost" data-act="close-sheet">Close</button>';
+    ? (canSend() ? '<button class="btn pri" data-act="inv-approve-send-ask" data-id="' + id + '">Approve and send to customer</button><button class="btn" data-act="inv-approve" data-id="' + id + '">Approve only</button>' : '<button class="btn pri" data-act="inv-approve" data-id="' + id + '">Approve invoice</button>') + '<button class="btn" data-act="inv-edit" data-id="' + id + '">Edit</button><button class="btn ghost" data-act="inv-print">Print or save PDF</button><button class="btn ghost" data-act="close-sheet">Close</button>'
+    : (canSend() && i.status === "unpaid" ? '<button class="btn pri" data-act="inv-send-ask" data-id="' + id + '">Send to customer</button><button class="btn" data-act="inv-copy" data-id="' + id + '">Copy message to send</button>' : '<button class="btn pri" data-act="inv-copy" data-id="' + id + '">Copy message to send</button>') + '<button class="btn" data-act="inv-print">Print or save PDF</button><button class="btn ghost" data-act="close-sheet">Close</button>';
   openSheet((draft ? '<p class="sub"><b>Check it over.</b> Nothing is sent and no reminders start until you approve it.</p>' : '') + h + includedList("invoice") + '<div class="btns noprint">' + btns + '</div>');
 }
 function settingsForm() {
@@ -613,6 +639,10 @@ document.addEventListener("click", function (e) {
   else if (a === "skip-logo") run(sb.from("clients").update({ onboarded: true }).eq("id", S.user.id).then(check), "");
   else if (a === "inv-approve") setStatus("invoices", id, { status: "unpaid", issued: today() }, "Approved. It's ready to send.");
   else if (a === "inv-copy") invoiceCopy(byId(S.invoices, id));
+  else if (a === "inv-approve-send-ask") sendInvAsk(id, true);
+  else if (a === "inv-send-ask") sendInvAsk(id, false);
+  else if (a === "inv-approve-send-do") doSendInvoice(id, true);
+  else if (a === "inv-send-do") doSendInvoice(id, false);
   else if (a === "inv-print") window.print();
   else if (a === "q-delete-ask") askSheet("Delete this quote?", "This can't be undone.", "q-delete", id, "Yes, delete");
   else if (a === "q-delete") run(sb.from("quotes").delete().eq("id", id).then(check), "Deleted");
