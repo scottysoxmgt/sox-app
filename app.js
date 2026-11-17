@@ -111,7 +111,7 @@ function render() {
     '<header class="top"><div class="wrap">' + (c.logo ? logoImg("hlogo") : '<img src="sox-icon.svg" alt="">') + '<div class="name">' + esc(c.business_name) + '</div></div></header>' +
     '<main class="wrap' + (t === "dash" ? " full" : "") + '">' + banner + body + '</main>' +
     '<nav class="tabs" aria-label="Main"><div class="in" style="--n:' + tabs.length + '">' + tabs.map(function (x) {
-      return '<button data-act="tab" data-v="' + x[0] + '"' + (t === x[0] ? ' aria-current="page"' : '') + '>' + ICON[x[0]] + (x[0] === "today" && unreadReplies().length ? '<i class="dot" aria-label="New replies"></i>' : "") + x[1] + '</button>';
+      return '<button data-act="tab" data-v="' + x[0] + '"' + (t === x[0] ? ' aria-current="page"' : '') + '>' + ICON[x[0]] + (x[0] === "today" && (unreadReplies().length || claimedPaid().length) ? '<i class="dot" aria-label="New replies"></i>' : "") + x[1] + '</button>';
     }).join("") + '</div></nav>';
   if (t === "dash") startDash();
 }
@@ -129,6 +129,15 @@ function vToday() {
     '<div class="tile' + (late.length ? " bad" : "") + '"><div class="k">Overdue</div><div class="v">' + money(lateSum) + '</div><div class="s">' + plural(late.length, "invoice") + '</div></div>' +
     '<div class="tile"><div class="k">Quotes waiting</div><div class="v">' + waiting.length + '</div><div class="s">' + money(waitSum) + '</div></div></div>';
   h += vReplies();
+  var claimed = claimedPaid();
+  if (claimed.length) {
+    h += '<div class="head-row"><h2>Customer says paid <span class="dot-n">' + claimed.length + '</span></h2></div>';
+    claimed.forEach(function (i) {
+      h += '<div class="row reply"><div class="top-line"><div><div class="t">' + esc(i.customer || "Customer") + '</div><div class="m">Invoice ' + esc(i.number || "") + ' · tapped "I\'ve paid" ' + esc(fmtDate(i.paid_claimed_at)) + '</div></div><div class="amt">' + money(i.amount) + '</div></div>' +
+        '<div class="rbody">Check your bank. If the money is in, mark it as paid.</div>' +
+        '<div class="acts"><button class="btn pri small" data-act="inv-paid" data-id="' + i.id + '">Mark as paid</button><button class="btn small" data-act="inv-view" data-id="' + i.id + '">View invoice</button></div></div>';
+    });
+  }
   h += '<h2>Needs you</h2>';
   var items = "";
   S.invoices.filter(function (i) { return i.status === "draft"; }).slice(0, 5).forEach(function (i) {
@@ -146,6 +155,7 @@ function vToday() {
     : '<div class="empty"><b>Welcome.</b><br>Start by adding a customer, then a quote.<br><br><button class="btn pri" data-act="new-quote">Add your first quote</button></div>';
   return h + items;
 }
+function claimedPaid() { return S.invoices.filter(function (i) { return i.status === "unpaid" && i.paid_claimed_at; }); }
 function unreadReplies() { return S.replies.filter(function (r) { return !r.read_at; }); }
 function vReplies() {
   var un = unreadReplies();
@@ -198,6 +208,7 @@ function vInvoices() {
     if (i.status === "draft") tag = '<span class="tag amber">Draft · needs your approval</span>';
     else if (i.status === "paid") tag = '<span class="tag ok">Paid' + (i.paid_at ? ' ' + esc(fmtDate(i.paid_at)) : '') + '</span>';
     else if (i.status === "void") tag = '<span class="tag grey">Cancelled</span>';
+    else if (i.status === "unpaid" && i.paid_claimed_at) tag = '<span class="tag ok">Customer says paid</span>';
     else if (od > 0) tag = '<span class="tag bad">' + plural(od, "day") + ' overdue</span>';
     else if (od === 0) tag = '<span class="tag amber">Due today</span>';
     else tag = '<span class="tag">Due in ' + plural(-od, "day") + '</span>';
