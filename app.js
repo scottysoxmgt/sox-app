@@ -159,7 +159,7 @@ function vQuotes() {
   if (!list.length) return h + '<div class="empty">No quotes here yet.</div>';
   return h + list.map(function (q) {
     var st = qStatus(q), a = "";
-    if (q.status === "draft") a = '<button class="btn pri small" data-act="q-sent" data-id="' + q.id + '">Mark as sent</button>';
+    if (q.status === "draft") a = canSend() ? '<button class="btn pri small" data-act="q-send-ask" data-id="' + q.id + '">Send to customer</button><button class="btn small" data-act="q-sent" data-id="' + q.id + '">Mark as sent</button>' : '<button class="btn pri small" data-act="q-sent" data-id="' + q.id + '">Mark as sent</button>';
     if (q.status === "sent" || q.status === "followup") a = '<button class="btn pri small" data-act="q-approved" data-id="' + q.id + '">They said yes</button><button class="btn small" data-act="q-lost" data-id="' + q.id + '">Lost it</button>';
     if (q.status === "approved") { var ex = S.invoices.filter(function (x) { return x.quote_id === q.id && x.status !== "void"; })[0]; a = ex ? '<button class="btn pri small" data-act="inv-view" data-id="' + ex.id + '">View invoice</button>' : '<button class="btn pri small" data-act="q-invoice" data-id="' + q.id + '">Make invoice</button>'; }
     a = '<button class="btn small" data-act="q-view" data-id="' + q.id + '">View quote</button>' + a;
@@ -312,6 +312,29 @@ function copySheet(q) {
   openSheet('<h2>Message for your customer</h2><p class="sub">Copy this and send it by text or email.</p><textarea class="copy" id="copyTxt" readonly>' + esc(txt) + '</textarea><div class="btns"><button class="btn pri" data-act="copy-do">Copy</button><button class="btn ghost" data-act="close-sheet">Close</button></div>');
 }
 
+function canSend() { return !!(S.client && (S.client.plan === "elevate" || S.client.plan === "premium")); }
+function sendAsk(id) {
+  var q = byId(S.quotes, id), cust = q && byId(S.customers, q.customer_id), c = S.client;
+  if (!q) return;
+  var via = cust ? (cust.phone ? "a text to " + cust.phone : cust.email ? "an email to " + cust.email : "") : "";
+  if (!via) return openSheet('<h2>Add their contact first</h2><p>' + (cust ? esc(cust.name) + " has no mobile or email saved." : "This quote has no customer attached.") + ' Edit it and add one, then try again.</p><div class="btns"><button class="btn ghost" data-act="close-sheet">Close</button></div>');
+  if (cust.opted_out) return openSheet('<h2>Can\'t send this one</h2><p>' + esc(cust.name) + ' asked us not to message them.</p><div class="btns"><button class="btn ghost" data-act="close-sheet">Close</button></div>');
+  var note = c.test_mode ? '<p class="sub">Your account is in test mode, so this goes to you only, not ' + esc(cust.name) + '.</p>' : "";
+  openSheet('<h2>Send this quote to ' + esc(cust.name) + '?</h2><p>We\'ll send ' + esc(via) + ' with a link to the quote. They can look it over and tap "Yes, go ahead".</p>' + note + '<div class="btns"><button class="btn pri" data-act="q-send-do" data-id="' + id + '">Send now</button><button class="btn ghost" data-act="close-sheet">Not yet</button></div>');
+}
+function doSend(id) {
+  if (S.busy) return; S.busy = true;
+  var btn = $("#sheet [data-act=q-send-do]"); if (btn) { btn.disabled = true; btn.textContent = "Sending…"; }
+  sb.functions.invoke("send-to-customer", { body: { kind: "q", id: id } }).then(function (r) {
+    if (r.error) {
+      var ctx = r.error.context;
+      return (ctx && ctx.json ? ctx.json().catch(function () { return null; }) : Promise.resolve(null)).then(function (j) { throw new Error((j && j.error) || "That didn't send. Please try again."); });
+    }
+    var m = (r.data && r.data.message) || "Sent.";
+    closeSheet(); return reload().then(function () { toast(m); });
+  }).catch(function (e) { if (btn) { btn.disabled = false; btn.textContent = "Send now"; } sheetErr(e.message); })
+    .then(function () { S.busy = false; });
+}
 function invoiceCopy(i) {
   var cust = byId(S.customers, i.customer_id), c = S.client;
   var txt = "Hi " + firstName(cust ? cust.name : i.customer) + ", thanks for choosing " + c.business_name + ". Here is invoice " + (i.number || "") + " for " + money(i.amount) + " for " + (i.description || "the work") + ". It's due " + fmtDate(i.due) + "." + (c.pay_details ? " To pay: " + c.pay_details.replace(/\s*\n\s*/g, ", ") + "." : "") + " Cheers, " + (c.owner_name || c.business_name);
@@ -417,8 +440,8 @@ function quotePreview(id) {
     paperItems(items, gst) + (q.notes ? '<div class="ppay"><div style="white-space:pre-line">' + esc(q.notes) + '</div></div>' : "") +
     (c.default_terms ? '<div class="pm" style="margin-top:12px;white-space:pre-line">' + esc(c.default_terms) + '</div>' : "") +
     '<div class="ppay"><b>To go ahead,</b> reply "Approved" or call ' + esc(c.phone || c.business_name) + '.</div></div>';
-  var btns = (draft ? '<button class="btn pri" data-act="q-sent" data-id="' + id + '">Mark as sent</button>' : '') + '<button class="btn" data-act="q-copy" data-id="' + id + '">Copy message</button>' + (draft ? '<button class="btn" data-act="q-edit" data-id="' + id + '">Edit</button>' : '') + '<button class="btn ghost" data-act="inv-print">Print or save PDF</button><button class="btn ghost" data-act="close-sheet">Close</button>';
-  openSheet((draft ? '<p class="sub"><b>Check it over.</b> ' + (S.client.plan === "premium" ? 'Send it to your customer, then tap "Mark as sent" so we start the follow-ups.' : 'Send it to your customer, then tap "Mark as sent" to keep track of it.') + '</p>' : '') + h + includedList("quote") + '<div class="btns noprint">' + btns + '</div>');
+  var btns = (draft ? (canSend() ? '<button class="btn pri" data-act="q-send-ask" data-id="' + id + '">Send to customer</button><button class="btn" data-act="q-sent" data-id="' + id + '">Mark as sent</button>' : '<button class="btn pri" data-act="q-sent" data-id="' + id + '">Mark as sent</button>') : '') + '<button class="btn" data-act="q-copy" data-id="' + id + '">Copy message</button>' + (draft ? '<button class="btn" data-act="q-edit" data-id="' + id + '">Edit</button>' : '') + '<button class="btn ghost" data-act="inv-print">Print or save PDF</button><button class="btn ghost" data-act="close-sheet">Close</button>';
+  openSheet((draft ? '<p class="sub"><b>Check it over.</b> ' + (canSend() ? 'Tap "Send to customer" and we text them a link to this quote. Already sent it yourself? Tap "Mark as sent".' : S.client.plan === "premium" ? 'Send it to your customer, then tap "Mark as sent" so we start the follow-ups.' : 'Send it to your customer, then tap "Mark as sent" to keep track of it.') + '</p>' : '') + h + includedList("quote") + '<div class="btns noprint">' + btns + '</div>');
 }
 function invoicePreview(id) {
   var i = byId(S.invoices, id); if (!i) return;
@@ -579,6 +602,8 @@ document.addEventListener("click", function (e) {
   else if (a === "q-approved") setStatus("quotes", id, { status: "approved", accepted_at: new Date().toISOString() }, (S.client.plan === "premium" ? "Nice one. Follow-ups stopped." : "Nice one."));
   else if (a === "q-lost") setStatus("quotes", id, { status: "lost" }, (S.client.plan === "premium" ? "Marked as lost. Follow-ups stopped." : "Marked as lost."));
   else if (a === "q-copy") copySheet(byId(S.quotes, id));
+  else if (a === "q-send-ask") sendAsk(id);
+  else if (a === "q-send-do") doSend(id);
   else if (a === "copy-do") { var t = $("#copyTxt"); var done = function () { toast("Copied"); }; t.select(); try { navigator.clipboard.writeText(t.value).then(done, function () { document.execCommand("copy"); done(); }); } catch (x) { try { document.execCommand("copy"); done(); } catch (y) { } } }
   else if (a === "q-invoice") { var q = byId(S.quotes, id); invoiceForm(null, { customer_id: q.customer_id, items: (q.items && q.items.length) ? q.items : [{ d: q.job || "Work", q: 1, p: q.value }], quote_id: q.id }); }
   else if (a === "inv-view") invoicePreview(id);
