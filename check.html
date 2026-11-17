@@ -15,7 +15,8 @@ button{display:block;width:100%;font:inherit;font-weight:600;padding:16px;border
 </style></head><body><main><div class="card" id="c"><small>Loading…</small></div></main>
 <script>
 var API = "https://rqqnwvletctvjsosfhgw.supabase.co/functions/v1/safety-reply";
-var t = new URLSearchParams(location.search).get("t"), c = document.getElementById("c");
+var pm = location.pathname.match(/\/c\/([0-9a-fA-F]{10})\/?$/);
+var t = pm ? pm[1] : new URLSearchParams(location.search).get("t"), c = document.getElementById("c");
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]})}
 function money(n){return "$"+Number(n||0).toLocaleString("en-AU",{maximumFractionDigits:2})}
 function done(text,cls){c.innerHTML='<h1>Thanks, all done.</h1><p class="msg '+cls+'">'+esc(text)+'</p>'}
