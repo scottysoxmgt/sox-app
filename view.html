@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Your quote or invoice</title>
+<style>
+:root{--bg:#f4f7fb;--card:#fff;--fg:#0b1220;--mut:#52607a;--blue:#1d5df0;--line:#d9e1ee;--ok:#0f7a4a;--warn:#b45309}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#121a2b;--fg:#eef3fb;--mut:#9aa9c4;--blue:#5b8cff;--line:#243049;--ok:#4ade80;--warn:#fbbf24}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:16px}
+main{max-width:640px;margin:0 auto}
+.note{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:0 0 12px}
+.note h1{font-size:20px;margin:0 0 4px;line-height:1.25}.note p{margin:0;color:var(--mut)}
+.note.okc{border-color:var(--ok)}.note.okc h1{color:var(--ok)}.note.warn{border-color:var(--warn)}.note.warn h1{color:var(--warn)}
+.paper{position:relative;background:#fff;color:#111;border-radius:10px;padding:20px 18px;border:1px solid #d5dbe6;font-size:15px;overflow:hidden}
+.paper .ph{display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap}.paper .pb{font-weight:800;font-size:18px}.paper .pm{color:#555;font-size:13px}.paper .pt{font-weight:800;font-size:20px;letter-spacing:.06em;text-align:right}
+.paper .pgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:18px 0}.paper .pl{font-size:11px;letter-spacing:.14em;color:#777;font-weight:700}
+.paper .ptab{width:100%;border-collapse:collapse}.paper .ptab th{text-align:left;font-size:11px;letter-spacing:.12em;color:#777;border-bottom:2px solid #111;padding:6px 0}.paper .ptab td{padding:10px 0;border-bottom:1px solid #e2e6ee;overflow-wrap:anywhere}.paper .r{text-align:right!important;white-space:nowrap;padding-left:10px}
+.paper .ptot{margin-top:12px;margin-left:auto;max-width:260px}.paper .ptot div{display:flex;justify-content:space-between;gap:12px;padding:3px 0}.paper .tt{font-weight:800;font-size:18px;border-top:2px solid #111;margin-top:4px;padding-top:6px!important}
+.paper .ppay{margin-top:18px;padding-top:12px;border-top:1px dashed #bbb;font-size:14px}
+.paper .pjob{margin:4px 0 14px}
+.plogo{max-height:56px;max-width:180px;width:auto;display:block;margin-bottom:8px;object-fit:contain}
+.stamp{position:absolute;right:14px;top:60px;transform:rotate(-12deg);border:3px solid #0f7a4a;color:#0f7a4a;font-weight:800;letter-spacing:.2em;padding:2px 10px;border-radius:6px;opacity:.55;font-size:18px}
+.act{margin-top:14px}
+button{display:block;width:100%;font:inherit;font-weight:700;padding:16px;border-radius:12px;border:2px solid var(--blue);background:var(--blue);color:#fff;cursor:pointer}
+button:disabled{opacity:.5}
+.small{color:var(--mut);font-size:14px;margin-top:10px}
+.foot{color:var(--mut);font-size:13px;text-align:center;margin:18px 0 6px}
+</style></head><body><main id="m"><div class="note"><p>Loading…</p></div></main>
+<script>
+var API = "https://rqqnwvletctvjsosfhgw.supabase.co/functions/v1/customer-view";
+var pm = location.pathname.match(/\/(q|i)\/([0-9a-fA-F]{10})\/?$/);
+var K = pm && pm[1], C = pm && pm[2], m = document.getElementById("m");
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(x){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[x]})}
+function money(n){return Number(n||0).toLocaleString("en-AU",{style:"currency",currency:"AUD",minimumFractionDigits:0,maximumFractionDigits:2})}
+function fmt(iso){if(!iso)return "";return new Date(String(iso).slice(0,10)+"T00:00:00Z").toLocaleDateString("en-AU",{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"})}
+function note(h,p,cls){return '<div class="note '+(cls||"")+'"><h1>'+esc(h)+'</h1>'+(p?'<p>'+esc(p)+'</p>':"")+'</div>'}
+function total(items){return items.reduce(function(s,l){return s+Number(l.q)*Number(l.p)},0)}
+function itemsHtml(items,gst){
+  var rows=items.map(function(l){return '<tr><td>'+esc(l.d)+(Number(l.q)!==1?'<div class="pm">'+esc(l.q)+' × '+money(l.p)+'</div>':"")+'</td><td class="r">'+money(Number(l.q)*Number(l.p))+'</td></tr>'}).join("");
+  var amt=total(items);
+  return '<table class="ptab"><thead><tr><th>Description</th><th class="r">Amount</th></tr></thead><tbody>'+rows+'</tbody></table><div class="ptot">'+
+    (gst?'<div><span>GST (included)</span><span>'+money(Math.round(amt/11*100)/100)+'</span></div>':"")+
+    '<div class="tt"><span>Total'+(gst?" (incl. GST)":"")+'</span><span>'+money(amt)+'</span></div></div>';
+}
+function head(b,title,number){
+  return '<div class="ph"><div>'+(b.logo?'<img class="plogo" src="'+esc(b.logo)+'" alt="'+esc(b.name)+' logo">':"")+'<div class="pb">'+esc(b.name)+'</div>'+(b.abn?'<div class="pm">ABN '+esc(b.abn)+'</div>':"")+(b.phone?'<div class="pm">'+esc(b.phone)+'</div>':"")+(b.email?'<div class="pm">'+esc(b.email)+'</div>':"")+'</div><div class="pt">'+title+'<div class="pm">No. '+esc(number||"")+'</div></div></div>';
+}
+function showQuote(j){
+  var b=j.business;document.title="Quote from "+b.name;
+  var h="";
+  if(j.status==="approved") h+=note("You've said yes. Thank you.",b.name+" knows and will be in touch.","okc");
+  else if(j.status==="lost") h+=note("This quote is no longer open.","Please contact "+b.name+(b.phone?" on "+b.phone:"")+" if you have a question.","warn");
+  else if(j.expired) h+=note("This quote has expired.","Please contact "+b.name+(b.phone?" on "+b.phone:"")+" and we'll update it.","warn");
+  h+='<div class="paper">'+head(b,"QUOTE",j.number)+
+    '<div class="pgrid"><div><div class="pl">PREPARED FOR</div><div>'+esc(j.customer)+'</div>'+(j.address?'<div class="pm">'+esc(j.address)+'</div>':"")+'</div><div><div class="pl">DATE</div><div>'+esc(fmt(j.date))+'</div><div class="pl" style="margin-top:8px">GOOD UNTIL</div><div>'+esc(fmt(j.until))+'</div></div></div>'+
+    '<div class="pjob"><b>'+esc(j.job||"")+'</b>'+(j.site?'<div class="pm">'+esc(j.site)+'</div>':"")+(j.scope?'<div style="white-space:pre-line;margin-top:6px">'+esc(j.scope)+'</div>':"")+'</div>'+
+    itemsHtml(j.items,b.gst)+(j.notes?'<div class="ppay"><div style="white-space:pre-line">'+esc(j.notes)+'</div></div>':"")+
+    (b.terms?'<div class="pm" style="margin-top:12px;white-space:pre-line">'+esc(b.terms)+'</div>':"")+'</div>';
+  if(j.canApprove) h+='<div class="act"><button id="go">Yes, go ahead</button><div class="small">Pressing this tells '+esc(b.name)+' you accept this quote. Questions first? '+(b.phone?'Call '+esc(b.phone)+'.':"Contact "+esc(b.name)+".")+'</div></div>';
+  m.innerHTML=h;
+  var go=document.getElementById("go");
+  if(go) go.onclick=function(){
+    go.disabled=true;go.textContent="Sending…";
+    fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({k:"q",c:C,a:"approve"})})
+     .then(function(r){return r.json()}).then(function(x){
+       if(x.ok){ load(); }
+       else { go.disabled=false;go.textContent="Yes, go ahead";alert_("Sorry, that didn't go through. Please try again, or call "+(b.phone||b.name)+"."); }
+     }).catch(function(){go.disabled=false;go.textContent="Yes, go ahead";alert_("Couldn't connect. Please try again.")});
+  };
+}
+function alert_(t){var d=document.createElement("div");d.className="note warn";d.innerHTML="<p>"+esc(t)+"</p>";m.insertBefore(d,m.firstChild)}
+function showInvoice(j){
+  var b=j.business,paid=j.status==="paid";document.title="Invoice from "+b.name;
+  m.innerHTML=(paid?note("This invoice has been paid. Thank you.","","okc"):"")+
+   '<div class="paper">'+(paid?'<div class="stamp">PAID</div>':"")+head(b,b.gst?"TAX INVOICE":"INVOICE",j.number)+
+   '<div class="pgrid"><div><div class="pl">BILL TO</div><div>'+esc(j.customer)+'</div>'+(j.address?'<div class="pm">'+esc(j.address)+'</div>':"")+'</div><div><div class="pl">ISSUED</div><div>'+esc(fmt(j.issued))+'</div><div class="pl" style="margin-top:8px">DUE</div><div>'+esc(fmt(j.due))+'</div></div></div>'+
+   itemsHtml(j.items,b.gst)+(j.notes?'<div class="ppay"><div style="white-space:pre-line">'+esc(j.notes)+'</div></div>':"")+
+   (b.pay&&!paid?'<div class="ppay"><div class="pl">HOW TO PAY</div><div style="white-space:pre-line">'+esc(b.pay)+'</div></div>':"")+
+   (b.terms?'<div class="pm" style="margin-top:12px;white-space:pre-line">'+esc(b.terms)+'</div>':"")+'</div>';
+}
+function load(){
+  if(!K){m.innerHTML=note("This link isn't right.","Please open the link from your text or email.");return}
+  fetch(API+"?k="+K+"&c="+encodeURIComponent(C)).then(function(r){return r.json()}).then(function(j){
+    if(j.error){m.innerHTML=note("We couldn't find that.","The link may be old or mistyped. Please check your latest message.");return}
+    if(j.kind==="q") showQuote(j); else showInvoice(j);
+  }).catch(function(){m.innerHTML=note("Couldn't load.","Check your internet and try again.")});
+}
+load();
+</script></body></html>
