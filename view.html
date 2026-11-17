@@ -26,6 +26,8 @@ button{display:block;width:100%;font:inherit;font-weight:700;padding:16px;border
 button:disabled{opacity:.5}
 .small{color:var(--mut);font-size:14px;margin-top:10px}
 .foot{color:var(--mut);font-size:13px;text-align:center;margin:18px 0 6px}
+button.ghost{background:transparent;color:var(--blue);margin-top:10px}
+@media print{body{background:#fff;padding:0}.note,.act,.foot{display:none!important}.paper{border:0;border-radius:0;padding:0}.stamp{opacity:1}}
 </style></head><body><main id="m"><div class="note"><p>Loading…</p></div></main>
 <script>
 var API = "https://rqqnwvletctvjsosfhgw.supabase.co/functions/v1/customer-view";
@@ -58,7 +60,9 @@ function showQuote(j){
     itemsHtml(j.items,b.gst)+(j.notes?'<div class="ppay"><div style="white-space:pre-line">'+esc(j.notes)+'</div></div>':"")+
     (b.terms?'<div class="pm" style="margin-top:12px;white-space:pre-line">'+esc(b.terms)+'</div>':"")+'</div>';
   if(j.canApprove) h+='<div class="act"><button id="go">Yes, go ahead</button><div class="small">Pressing this tells '+esc(b.name)+' you accept this quote. Questions first? '+(b.phone?'Call '+esc(b.phone)+'.':"Contact "+esc(b.name)+".")+'</div></div>';
+  h+='<div class="act"><button class="ghost" id="pdf">Save as PDF</button></div>';
   m.innerHTML=h;
+  document.getElementById("pdf").onclick=function(){window.print()};
   var go=document.getElementById("go");
   if(go) go.onclick=function(){
     go.disabled=true;go.textContent="Sending…";
@@ -72,12 +76,24 @@ function showQuote(j){
 function alert_(t){var d=document.createElement("div");d.className="note warn";d.innerHTML="<p>"+esc(t)+"</p>";m.insertBefore(d,m.firstChild)}
 function showInvoice(j){
   var b=j.business,paid=j.status==="paid";document.title="Invoice from "+b.name;
-  m.innerHTML=(paid?note("This invoice has been paid. Thank you.","","okc"):"")+
+  m.innerHTML=(paid?note("This invoice has been paid. Thank you.","","okc"):j.paid_claimed?note("Thanks. We've let "+b.name+" know you've paid.","They'll confirm once they see the payment.","okc"):"")+
    '<div class="paper">'+(paid?'<div class="stamp">PAID</div>':"")+head(b,b.gst?"TAX INVOICE":"INVOICE",j.number)+
    '<div class="pgrid"><div><div class="pl">BILL TO</div><div>'+esc(j.customer)+'</div>'+(j.address?'<div class="pm">'+esc(j.address)+'</div>':"")+'</div><div><div class="pl">ISSUED</div><div>'+esc(fmt(j.issued))+'</div><div class="pl" style="margin-top:8px">DUE</div><div>'+esc(fmt(j.due))+'</div></div></div>'+
    itemsHtml(j.items,b.gst)+(j.notes?'<div class="ppay"><div style="white-space:pre-line">'+esc(j.notes)+'</div></div>':"")+
    (b.pay&&!paid?'<div class="ppay"><div class="pl">HOW TO PAY</div><div style="white-space:pre-line">'+esc(b.pay)+'</div></div>':"")+
-   (b.terms?'<div class="pm" style="margin-top:12px;white-space:pre-line">'+esc(b.terms)+'</div>':"")+'</div>';
+   (b.terms?'<div class="pm" style="margin-top:12px;white-space:pre-line">'+esc(b.terms)+'</div>':"")+'</div>'+
+   (!paid&&!j.paid_claimed?'<div class="act"><button id="paid">I\'ve paid</button><div class="small">Pressing this lets '+esc(b.name)+' know, so they can check their account. Nothing is charged.</div></div>':"")+
+   '<div class="act"><button class="ghost" id="pdf">Save as PDF</button></div>';
+  document.getElementById("pdf").onclick=function(){window.print()};
+  var pb=document.getElementById("paid");
+  if(pb) pb.onclick=function(){
+    pb.disabled=true;pb.textContent="Sending…";
+    fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({k:"i",c:C,a:"paid"})})
+     .then(function(r){return r.json()}).then(function(x){
+       if(x.ok){ load(); }
+       else { pb.disabled=false;pb.textContent="I've paid";alert_("Sorry, that didn't go through. Please try again, or call "+(b.phone||b.name)+"."); }
+     }).catch(function(){pb.disabled=false;pb.textContent="I've paid";alert_("Couldn't connect. Please try again.")});
+  };
 }
 function load(){
   if(!K){m.innerHTML=note("This link isn't right.","Please open the link from your text or email.");return}
