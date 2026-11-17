@@ -220,3 +220,10 @@ body:has(main.full){background:radial-gradient(700px 360px at 85% -80px,rgba(42,
 .login .box{backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);background:linear-gradient(180deg,rgba(18,30,54,.82),rgba(13,22,40,.82))}
 .login h1{font-size:28px}
 body{min-height:100vh;min-height:100dvh}
+
+/* customer replies */
+nav.tabs button{position:relative}
+nav.tabs .dot{position:absolute;top:8px;left:calc(50% + 6px);width:11px;height:11px;border-radius:50%;background:#FF4D5E;border:2px solid #05080F;box-shadow:0 0 8px rgba(255,77,94,.8)}
+.dot-n{display:inline-block;min-width:22px;padding:1px 7px;margin-left:6px;border-radius:99px;background:#FF4D5E;color:#fff;font:700 13px/1.5 Inter,system-ui,sans-serif;text-align:center;vertical-align:middle}
+.row.reply{border-color:#FF6B78}
+.row.reply .rbody{margin:8px 0 2px;padding:10px 12px;border-radius:10px;background:rgba(53,180,255,.08);overflow-wrap:anywhere;white-space:pre-wrap}

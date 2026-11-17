@@ -1,7 +1,7 @@
 (function () {
 "use strict";
 var CFG = window.SOX_CONFIG || {}, sb = null;
-var S = { user: null, client: null, customers: [], quotes: [], invoices: [], log: [], tab: "today", qf: "all", inf: "open", busy: false };
+var S = { user: null, client: null, customers: [], quotes: [], invoices: [], log: [], replies: [], tab: "today", qf: "all", inf: "open", busy: false };
 var $ = function (s) { return document.querySelector(s); };
 
 /* ---------- small helpers ---------- */
@@ -85,9 +85,11 @@ function loadAll() {
     sb.from("customers").select("*").eq("client_id", id).order("name", { ascending: true }),
     sb.from("quotes").select("*").eq("client_id", id).order("created_at", { ascending: false }),
     sb.from("invoices").select("*").eq("client_id", id).order("created_at", { ascending: false }),
-    sb.from("message_log").select("*").eq("client_id", id).order("created_at", { ascending: false }).limit(40)
+    sb.from("message_log").select("*").eq("client_id", id).order("created_at", { ascending: false }).limit(40),
+    sb.from("replies").select("*").eq("client_id", id).order("received_at", { ascending: false }).limit(30)
   ]).then(function (r) {
     S.client = check(r[0]); S.customers = check(r[1]) || []; S.quotes = check(r[2]) || []; S.invoices = check(r[3]) || []; S.log = check(r[4]) || [];
+    S.replies = (r[5] && !r[5].error && r[5].data) || [];
   });
 }
 function reload(what) { return loadAll().then(function () { render(); }); }
@@ -109,7 +111,7 @@ function render() {
     '<header class="top"><div class="wrap">' + (c.logo ? logoImg("hlogo") : '<img src="sox-icon.svg" alt="">') + '<div class="name">' + esc(c.business_name) + '</div></div></header>' +
     '<main class="wrap' + (t === "dash" ? " full" : "") + '">' + banner + body + '</main>' +
     '<nav class="tabs" aria-label="Main"><div class="in" style="--n:' + tabs.length + '">' + tabs.map(function (x) {
-      return '<button data-act="tab" data-v="' + x[0] + '"' + (t === x[0] ? ' aria-current="page"' : '') + '>' + ICON[x[0]] + x[1] + '</button>';
+      return '<button data-act="tab" data-v="' + x[0] + '"' + (t === x[0] ? ' aria-current="page"' : '') + '>' + ICON[x[0]] + (x[0] === "today" && unreadReplies().length ? '<i class="dot" aria-label="New replies"></i>' : "") + x[1] + '</button>';
     }).join("") + '</div></nav>';
   if (t === "dash") startDash();
 }
@@ -126,6 +128,7 @@ function vToday() {
     '<div class="tile wide"><div class="k">Owed to you</div><div class="v">' + money(owed) + '</div><div class="s">' + plural(open.length, "unpaid invoice") + '</div></div>' +
     '<div class="tile' + (late.length ? " bad" : "") + '"><div class="k">Overdue</div><div class="v">' + money(lateSum) + '</div><div class="s">' + plural(late.length, "invoice") + '</div></div>' +
     '<div class="tile"><div class="k">Quotes waiting</div><div class="v">' + waiting.length + '</div><div class="s">' + money(waitSum) + '</div></div></div>';
+  h += vReplies();
   h += '<h2>Needs you</h2>';
   var items = "";
   S.invoices.filter(function (i) { return i.status === "draft"; }).slice(0, 5).forEach(function (i) {
@@ -142,6 +145,23 @@ function vToday() {
   if (!items) items = S.quotes.length || S.invoices.length ? '<div class="empty">Nothing needs you right now.</div>'
     : '<div class="empty"><b>Welcome.</b><br>Start by adding a customer, then a quote.<br><br><button class="btn pri" data-act="new-quote">Add your first quote</button></div>';
   return h + items;
+}
+function unreadReplies() { return S.replies.filter(function (r) { return !r.read_at; }); }
+function vReplies() {
+  var un = unreadReplies();
+  if (!un.length) return "";
+  var h = '<div class="head-row"><h2>Customer replies <span class="dot-n">' + un.length + '</span></h2>' + (un.length > 1 ? '<button class="btn small ghost" data-act="reply-read-all">Mark all read</button>' : "") + '</div>';
+  un.slice(0, 5).forEach(function (r) {
+    var cu = r.customer_id ? byId(S.customers, r.customer_id) : null, q = r.quote_id ? byId(S.quotes, r.quote_id) : null, iv = r.invoice_id ? byId(S.invoices, r.invoice_id) : null;
+    var who = (cu && cu.name) || (iv && iv.customer) || (q && q.customer) || ("+" + r.from_number);
+    var about = iv ? "About invoice " + (iv.number || "") : q ? "About quote " + (q.number ? "#" + q.number : (q.job || "")) : "";
+    var when = new Date(r.received_at).toLocaleString("en-AU", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: tzOf() });
+    h += '<div class="row reply"><div class="top-line"><div><div class="t">' + esc(who) + (r.is_test ? ' <span class="tag grey">Test</span>' : "") + '</div><div class="m">' + esc([about, when].filter(Boolean).join(" · ")) + '</div></div></div>' +
+      '<div class="rbody">' + (r.kind === "stop" ? '<b>Asked us to stop texting them.</b> We won\'t message them again.' : esc(r.body)) + '</div>' +
+      '<div class="acts">' + (cu && cu.phone ? '' : '') + '<button class="btn pri small" data-act="reply-read" data-id="' + r.id + '">Mark as read</button></div></div>';
+  });
+  if (un.length > 5) h += '<div class="m" style="margin:-2px 0 10px">And ' + (un.length - 5) + ' more. Mark these as read to see them.</div>';
+  return h;
 }
 function qStatus(q) {
   var d = q.sent ? daysBetween(q.sent, today()) : 0;
@@ -611,6 +631,12 @@ document.addEventListener("click", function (e) {
   var a = b.dataset.act, id = b.dataset.id, v = b.dataset.v;
   if (a === "tab") { S.tab = v; render(); window.scrollTo(0, 0); }
   else if (a === "qf") { S.qf = v; render(); }
+  else if (a === "reply-read" || a === "reply-read-all") {
+    var ids = a === "reply-read" ? [id] : unreadReplies().map(function (r) { return r.id; }), now = new Date().toISOString();
+    ids.forEach(function (x) { var r = byId(S.replies, x); if (r) r.read_at = now; });
+    render();
+    sb.from("replies").update({ read_at: now }).in("id", ids).then(function (res) { if (res && res.error) toast("Couldn't save that. It may show again."); });
+  }
   else if (a === "inf") { S.inf = v; render(); }
   else if (a === "close-sheet") closeSheet();
   else if (a === "forgot") showForgot("", "");
